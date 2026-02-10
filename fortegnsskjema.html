@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<title>Fortegnsskjema</title>
+
+<!-- MathJax -->
+<script>
+  window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<style>
+body { 
+  font-family: system-ui, sans-serif; 
+  margin: 40px; 
+}
+
+/* x-akse */
+.axis {
+  position: relative;
+  height: 60px;
+  border-top: 2px solid black;
+  margin-bottom: 50px;
+}
+
+/* vertikal rotstrek */
+.root-line {
+  position: absolute;
+  top: -10px;
+  width: 2px;
+  height: 70px;
+  background: black;
+  transform: translateX(-50%);
+}
+
+/* rotetikett */
+.root-label {
+  position: absolute;
+  top: -35px;
+  font-size: 18px;
+  transform: translateX(-50%);
+  font-family: serif;
+}
+
+/* faktorlinje */
+.factor-line {
+  position: relative;
+  height: 40px;
+  margin-bottom: 25px;
+}
+
+.factor-name {
+  position: absolute;
+  left: 0px;
+  top: -10px;
+  font-size: 18px;
+  font-family: serif;
+  white-space: nowrap;
+}
+.factor-seg {
+  position: absolute;
+  top: 0px;
+  height: 0;
+  border-top-width: 3px;
+}
+
+.posSeg { border-top-style: solid; border-color: black; }
+.negSeg { border-top-style: dashed; border-color: black; }
+
+/* 0-symbol */
+.zero-symbol {
+  position: absolute;
+  top: -10px;
+  transform: translateX(-50%);
+  font-size: 18px;
+  font-family: serif;
+}
+
+/* Flytt diagrammet til høyre */
+.axis,
+.factor-line {
+  margin-left: 200px;
+}
+
+/* Polynomnavn skal stå der de står */
+.factor-name {
+  margin-left: -200px;
+}
+
+/* Luft mellom inputfelt og skjema */
+#scheme-wrapper {
+  margin-top: 40px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Fortegnsskjema</h2>
+
+<label for="inputPoly">Skriv inn polynom som faktorisert uttrykk:</label><br>
+<input id="inputPoly" type="text" style="width:400px; font-size:16px;"
+       placeholder="f.eks. (2x+1)(x-2)(x+3)">
+<button id="genBtn" type="button">Lag fortegnsskjema</button>
+
+<div id="scheme-wrapper">
+  <div id="scheme"></div>
+</div>
+
+<!-- JS legges til i DEL 3 og DEL 4 -->
+
+<script>
+// =============================
+// PARSE LINEÆRE FAKTORER
+// =============================
+
+// Tolk "2x+1"
+function parseLinearFactor(str) {
+  const m = str.match(/^([+-]?\d*)x([+-]\d+)?$/);
+  if (!m) return null;
+
+  let a = m[1];
+  let b = m[2];
+
+  if (a === "" || a === "+") a = 1;
+  if (a === "-") a = -1;
+
+  a = Number(a);
+  b = b ? Number(b) : 0;
+
+  return -b / a;
+}
+
+// Tolk "(2x+1)(x-3)^2(x+4)"
+function parsePolynomial(expr) {
+  expr = expr.replace(/\s+/g, "");
+
+  const matches = [...expr.matchAll(/\((.*?)\)(\^\d+)?/g)];
+  const result = [];
+
+  matches.forEach(m => {
+    const inside = m[1];
+    const pow = m[2] ? Number(m[2].slice(1)) : 1;
+    const root = parseLinearFactor(inside);
+    if (root !== null) {
+      result.push({ root, mult: pow, label: inside });
+    }
+  });
+
+  return result;
+}
+
+// =============================
+// MATEMATIKK FOR FORTEGNSSKJEMA
+// =============================
+
+function buildIntervals(roots) {
+  const R = [...new Set(roots)].sort((a,b)=>a-b);
+  const out = [];
+
+  if (R.length === 0)
+    return [{left:-1, right:1, sample:0}];
+
+  out.push({ left:R[0]-2, right:R[0], sample:R[0]-1 });
+
+  for (let i=0; i<R.length-1; i++)
+    out.push({
+      left:R[i],
+      right:R[i+1],
+      sample:(R[i] + R[i+1])/2
+    });
+
+  out.push({
+    left:R[R.length-1],
+    right:R[R.length-1]+2,
+    sample:R[R.length-1]+1
+  });
+
+  return out;
+}
+
+function signFactor(x, root, mult) {
+  if (Math.abs(x-root) < 1e-12) return 0;
+  const s = Math.sign(x-root);
+  return mult % 2 === 0 ? 1 : s;
+}
+
+// =============================
+// BYGG SELVE SKJEMAET
+// =============================
+
+function buildScheme(factors) {
+  const container = document.getElementById("scheme");
+  container.innerHTML = "";
+
+  const allRoots = [...new Set(factors.flatMap(f => f.roots))]
+                   .sort((a,b)=>a-b);
+
+  const axis = document.createElement("div");
+  axis.className = "axis";
+  container.appendChild(axis);
+
+  const W = 600;
+  const x0 = 80;
+
+  const minX = allRoots[0] - 2;
+  const maxX = allRoots[allRoots.length-1] + 2;
+
+  const pos = x => x0 + (x-minX)/(maxX-minX)*(W-x0);
+
+  // tegn røtter
+  allRoots.forEach(r => {
+    const v = document.createElement("div");
+    v.className = "root-line";
+    v.style.left = pos(r) + "px";
+    axis.appendChild(v);
+
+    const lbl = document.createElement("div");
+    lbl.className = "root-label";
+    lbl.innerHTML = `\\(${r}\\)`;
+    lbl.style.left = pos(r) + "px";
+    axis.appendChild(lbl);
+  });
+
+  const intervals = buildIntervals(allRoots);
+  const lines = [];
+
+  // faktorlinjer
+  factors.forEach(f => {
+    const line = document.createElement("div");
+    line.className = "factor-line";
+
+    const name = document.createElement("div");
+    name.className = "factor-name";
+    name.innerHTML = `\\(${f.label}\\)`;
+    line.appendChild(name);
+
+    line._name = name;
+    line._roots = f.roots;
+    lines.push(line);
+
+    container.appendChild(line);
+  });
+
+  MathJax.typesetPromise().then(() => {
+
+    // auto padding
+    lines.forEach(line => {
+      const w = line._name.offsetWidth;
+      line.style.paddingLeft = (w + 30) + "px";
+    });
+
+    // segmenter for hver linje
+    lines.forEach((line, idx) => {
+      const f = factors[idx];
+
+      // nullsymboler
+      f.roots.forEach(r => {
+        const z = document.createElement("div");
+        z.className = "zero-symbol";
+        z.textContent = "0";
+        z.style.left = pos(r) + "px";
+        line.appendChild(z);
+      });
+
+      const ints = buildIntervals(allRoots);
+
+      ints.forEach(I => {
+
+        let s = 1;
+        for (let i=0; i<f.roots.length; i++)
+          s *= signFactor(I.sample, f.roots[i], f.mult[i]);
+
+        const seg = document.createElement("div");
+        seg.className = "factor-seg " + (s > 0 ? "posSeg" : "negSeg");
+
+        const pad = 6;  // luft rundt 0
+
+        let leftPos  = pos(I.left);
+        let rightPos = pos(I.right);
+
+        // ⭐⭐⭐ DEN VIKTIGE FUNKSJONEN — FIXER ALT
+        function isFactorRoot(x) {
+          return f.roots.some(r => Math.abs(r - x) < 1e-9);
+        }
+
+        // Kun forkort ved ekte røtter for denne faktoren
+        if (isFactorRoot(I.left))  leftPos  += pad;
+        if (isFactorRoot(I.right)) rightPos -= pad;
+
+        seg.style.left  = leftPos + "px";
+        seg.style.width = (rightPos - leftPos) + "px";
+
+        line.appendChild(seg);
+      });
+    });
+  });
+}
+</script>
+
+<script>
+// =============================
+// GENERER FRA INPUT
+// =============================
+
+function generateFromInput() {
+  const txt = document.getElementById("inputPoly").value;
+  if (!txt) return;
+
+  const parsed = parsePolynomial(txt);
+  if (parsed.length === 0) {
+    alert("Kunne ikke tolke polynomet. Pass på at du skriver det faktorisert, f.eks (x-2)(2x+1).");
+    return;
+  }
+
+  const factors = parsed.map(f => ({
+    label: f.label,
+    roots: [f.root],
+    mult: [f.mult]
+  }));
+
+  // samlet produkt nederst
+  factors.push({
+    label: txt,
+    roots: parsed.map(f => f.root),
+    mult: parsed.map(f => f.mult)
+  });
+
+  buildScheme(factors);
+}
+
+// =============================
+// EVENT-LISTENER
+// =============================
+
+document.getElementById("genBtn").addEventListener("click", generateFromInput);
+
+// standard startverdi
+document.getElementById("inputPoly").value =
+  "(2x+1)(x-2)(x+3)";
+
+generateFromInput();
+</script>
+
+</body>
+</html>
