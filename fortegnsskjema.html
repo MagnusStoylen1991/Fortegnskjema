@@ -123,6 +123,35 @@ body {
   padding: 0 1px;         /* ⭐ litt luft på sidene */
   z-index: 999;           /* ⭐ alltid foran vertikale linjer */
 }
+
+.stopper {
+  position: absolute;
+  background: white;
+  width: 100%;    /* dekker hele skjemaets bredde */
+  height: 20px;   /* litt høyde for å kutte linja */
+  z-index: 900;   /* over linjene, men under null-symbolene */
+}
+
+#bottom-mask {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 60px;           /* hvor mye av de nederste linjene som skjules */
+  background: white;
+  z-index: 50;            /* foran vertikale linjer (z-index 2), men bak alt annet */
+  pointer-events: none;   /* ikke blokker klikk */
+}
+#red-box {
+  position: absolute;   /* viktig! følger containeren */
+  left: 0;
+  width: 100%;
+  height: 100px;
+  background: white;
+  z-index: 50;          /* foran linjer, bak symboler */
+  pointer-events: none; /* ikke klikkbar */
+}
+
+
 </style>
 </head>
 
@@ -138,6 +167,7 @@ body {
 <div id="scheme-wrapper">
   <div id="scheme"></div>
 </div>
+<div id="red-box"></div>
 
 <!-- JS legges til i DEL 3 og DEL 4 -->
 
@@ -306,7 +336,7 @@ function drawVerticalLines(allRoots, container, pos) {
   // Hvor x-aksen ligger høydemessig
   const axis = container.querySelector(".axis");
   const axisRect = axis.getBoundingClientRect();
-  const startY = axisRect.top - contRect.top;
+ const startY = axis.offsetTop - 5;   // hopp opp 5px over horisontal linje
 
   // Hele skjemaets høyde
   const totalHeight = container.offsetHeight;
@@ -418,8 +448,44 @@ function drawVerticalLines(allRoots, container, pos) {
       });
     });
 
-    // 3) TEGN VERTIKALE LINJER TIL SLUTT (én gang)
-    drawVerticalLines(allRoots, container, pos);
+
+// --- hvit stopper under produktlinja ---
+const productLine = container.querySelector(".factor-line:last-child");
+
+// --- automatisk rød boks under produktlinja ---
+let red = container.querySelector("#red-box");
+if (!red) {
+  red = document.createElement("div");
+  red.id = "red-box";
+  container.appendChild(red);
+}
+
+const offset = -25;   // negativ verdi = opp, positiv = ned
+red.style.top = (productLine.offsetTop + productLine.offsetHeight + offset) + "px";
+
+const stopper = document.createElement("div");
+stopper.className = "stopper";
+// legg stopperen 5px under produktlinja
+const y = productLine.offsetTop + productLine.offsetHeight + 5;
+stopper.style.top = y + "px";
+container.appendChild(stopper);
+
+// --- helt ny, enkel, fungerende maskeringsblokk ---
+let mask = container.querySelector("#bottom-mask");
+if (!mask) {
+  mask = document.createElement("div");
+  mask.id = "bottom-mask";
+  container.appendChild(mask);
+}
+
+mask.style.top = (productLine.offsetTop + productLine.offsetHeight + 5) + "px";
+
+// 3) TEGN VERTIKALE LINJER TIL SLUTT (én gang)
+drawVerticalLines(allRoots, container, pos);
+``
+    
+
+    
 
   }); // <-- SLUTT på MathJax-blokken
 } // <-- SLUTT på buildScheme(factors)
