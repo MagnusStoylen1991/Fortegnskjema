@@ -92,6 +92,37 @@ body {
 #scheme-wrapper {
   margin-top: 40px;
 }
+
+/* Vertikale linjesegmenter */
+.vline-seg {
+  position: absolute;
+  width: 2px;
+  background: black;
+  left: 0;   /* flyttes i JS */
+}
+
+/* Viktig for absolutte barn i #scheme (vline-seg, mm.) */
+#scheme {
+  position: relative;
+}
+
+/* Lagrekkefølge: faktor-segmenter < vertikale linjer < 0-symbol */
+.factor-seg { z-index: 1; }
+.vline-seg  { z-index: 2; }
+.zero-symbol { z-index: 3; }
+
+
+.zero-symbol {
+  position: absolute;
+  top: -10px;
+  transform: translateX(-50%);
+  font-size: 18px;
+  font-family: serif;
+
+  background: white;      /* ⭐ hvitt felt bak null-symbol */
+  padding: 0 1px;         /* ⭐ litt luft på sidene */
+  z-index: 999;           /* ⭐ alltid foran vertikale linjer */
+}
 </style>
 </head>
 
@@ -111,10 +142,31 @@ body {
 <!-- JS legges til i DEL 3 og DEL 4 -->
 
 <script>
-// =============================
-// PARSE LINEÆRE FAKTORER
-// =============================
+/* ========= Tall → brøk (MathJax) ========= */
+function toFraction(x, tol = 1e-10) {
+  if (Math.abs(x - Math.round(x)) < tol) {
+    return Math.round(x).toString();
+  }
+  const sign = x < 0 ? "-" : "";
+  x = Math.abs(x);
+  let h1 = 1, h2 = 0;
+  let k1 = 0, k2 = 1;
+  let b = x;
+  // Fortsetter brøk (continued fraction)
+  while (true) {
+    const a = Math.floor(b);
+    const h = a * h1 + h2;
+    const k = a * k1 + k2;
+    if (Math.abs(x - h / k) < tol) {
+      return `${sign}\\frac{${h}}{${k}}`;
+    }
+    h2 = h1; h1 = h;
+    k2 = k1; k1 = k;
+    b = 1 / (b - a);
+  }
+}
 
+/* ========= PARSE LINEÆRE FAKTORER ========= */
 // Tolk "2x+1"
 function parseLinearFactor(str) {
   const m = str.match(/^([+-]?\d*)x([+-]\d+)?$/);
@@ -151,10 +203,7 @@ function parsePolynomial(expr) {
   return result;
 }
 
-// =============================
-// MATEMATIKK FOR FORTEGNSSKJEMA
-// =============================
-
+/* ========= MATEMATIKK FOR FORTEGNSSKJEMA ========= */
 function buildIntervals(roots) {
   const R = [...new Set(roots)].sort((a,b)=>a-b);
   const out = [];
@@ -186,16 +235,12 @@ function signFactor(x, root, mult) {
   return mult % 2 === 0 ? 1 : s;
 }
 
-// =============================
-// BYGG SELVE SKJEMAET
-// =============================
-
+/* ========= BYGG SELVE SKJEMAET ========= */
 function buildScheme(factors) {
   const container = document.getElementById("scheme");
   container.innerHTML = "";
 
-  const allRoots = [...new Set(factors.flatMap(f => f.roots))]
-                   .sort((a,b)=>a-b);
+  const allRoots = [...new Set(factors.flatMap(f => f.roots))].sort((a,b)=>a-b);
 
   const axis = document.createElement("div");
   axis.className = "axis";
@@ -209,18 +254,24 @@ function buildScheme(factors) {
 
   const pos = x => x0 + (x-minX)/(maxX-minX)*(W-x0);
 
-  // tegn røtter
+  // tegn røtter (KUN etiketter, ikke korte vertikaler)
   allRoots.forEach(r => {
-    const v = document.createElement("div");
-    v.className = "root-line";
-    v.style.left = pos(r) + "px";
-    axis.appendChild(v);
+const lbl = document.createElement("div");
+lbl.className = "root-label";
+lbl.dataset.root = r;       // ⭐ NY LINJE – identifiserer roten
+lbl.innerHTML = `\\(${toFraction(r)}\\)`;
+lbl.style.left = pos(r) + "px";
+axis.appendChild(lbl);
 
-    const lbl = document.createElement("div");
-    lbl.className = "root-label";
-    lbl.innerHTML = `\\(${r}\\)`;
-    lbl.style.left = pos(r) + "px";
-    axis.appendChild(lbl);
+const mark = document.createElement("div");
+mark.className = "root-mark";
+mark.dataset.root = r;
+mark.style.position = "absolute";
+mark.style.left = pos(r) + "px";   // eksakt rotposisjon, uten transform!
+mark.style.top = "0px";
+mark.style.width = "1px";
+mark.style.height = "1px";
+axis.appendChild(mark);
   });
 
   const intervals = buildIntervals(allRoots);
@@ -243,15 +294,88 @@ function buildScheme(factors) {
     container.appendChild(line);
   });
 
+  /* --- HJELPER: tegn vertikale linjer med hull rundt 0-symbolene --- */
+function drawVerticalLines(allRoots, container, pos) {
+
+  // Fjern gamle linjer
+  container.querySelectorAll(".vline-seg").forEach(e => e.remove());
+
+  // Containerens plassering i viewport
+  const contRect = container.getBoundingClientRect();
+
+  // Hvor x-aksen ligger høydemessig
+  const axis = container.querySelector(".axis");
+  const axisRect = axis.getBoundingClientRect();
+  const startY = axisRect.top - contRect.top;
+
+  // Hele skjemaets høyde
+  const totalHeight = container.offsetHeight;
+
+  // Nullsymboler – VI BRUKER KUN DERES Y-VERDIER
+  const zeros = [...container.querySelectorAll(".zero-symbol")].map(z => {
+    const zr = z.getBoundingClientRect();
+    return {
+      top: zr.top - contRect.top - 4,      // litt ekstra luft
+      bottom: zr.bottom - contRect.top + 4
+    };
+  });
+
+  // For hver rot:
+  allRoots.forEach(r => {
+
+    // Finn rotens eksakte X (via root-mark)
+    const mark = container.querySelector(`.root-mark[data-root="${r}"]`);
+    const mr = mark.getBoundingClientRect();
+    const x = mr.left - contRect.left;
+
+    // Start med ett stort segment
+    let segments = [{ top: startY, bottom: totalHeight }];
+
+    // Klipp hull basert på 0-symbolets Y-intervall
+    zeros.forEach(z => {
+
+      const gapTop = z.top;
+      const gapBottom = z.bottom;
+
+      const newSegs = [];
+
+      segments.forEach(seg => {
+        if (seg.top < gapTop)
+          newSegs.push({ top: seg.top, bottom: gapTop });
+
+        if (seg.bottom > gapBottom)
+          newSegs.push({ top: gapBottom, bottom: seg.bottom });
+      });
+
+      segments = newSegs;
+    });
+
+    // Tegn segmenter
+    segments.forEach(seg => {
+      if (seg.bottom <= seg.top) return;
+
+      const div = document.createElement("div");
+      div.className = "vline-seg";
+      div.style.left = x + "px";
+      div.style.top = seg.top + "px";
+      div.style.height = (seg.bottom - seg.top) + "px";
+      container.appendChild(div);
+    });
+  });
+}
+
+
+
+  // --- Vent til MathJax og layout er klar ---
   MathJax.typesetPromise().then(() => {
 
-    // auto padding
+    // 1) auto padding
     lines.forEach(line => {
       const w = line._name.offsetWidth;
       line.style.paddingLeft = (w + 30) + "px";
     });
 
-    // segmenter for hver linje
+    // 2) segmenter for hver linje (+ nullsymboler)
     lines.forEach((line, idx) => {
       const f = factors[idx];
 
@@ -267,7 +391,6 @@ function buildScheme(factors) {
       const ints = buildIntervals(allRoots);
 
       ints.forEach(I => {
-
         let s = 1;
         for (let i=0; i<f.roots.length; i++)
           s *= signFactor(I.sample, f.roots[i], f.mult[i]);
@@ -280,7 +403,6 @@ function buildScheme(factors) {
         let leftPos  = pos(I.left);
         let rightPos = pos(I.right);
 
-        // ⭐⭐⭐ DEN VIKTIGE FUNKSJONEN — FIXER ALT
         function isFactorRoot(x) {
           return f.roots.some(r => Math.abs(r - x) < 1e-9);
         }
@@ -295,8 +417,12 @@ function buildScheme(factors) {
         line.appendChild(seg);
       });
     });
-  });
-}
+
+    // 3) TEGN VERTIKALE LINJER TIL SLUTT (én gang)
+    drawVerticalLines(allRoots, container, pos);
+
+  }); // <-- SLUTT på MathJax-blokken
+} // <-- SLUTT på buildScheme(factors)
 </script>
 
 <script>
