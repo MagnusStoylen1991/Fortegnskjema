@@ -167,7 +167,7 @@ body {
 <div id="scheme-wrapper">
   <div id="scheme"></div>
 </div>
-<div id="red-box"></div>
+<!---<div id="red-box"></div>--->
 
 <!-- JS legges til i DEL 3 og DEL 4 -->
 
@@ -196,27 +196,72 @@ function toFraction(x, tol = 1e-10) {
   }
 }
 
+
+
+function parseNumber(str) {
+  // Forventes allerede uten mellomrom; kan være f.eks. "-3", "2.5", "-1/2", "3.25/0.5"
+  if (str == null || str === "") return NaN;
+  // sikkerhet: komma skal allerede være konvertert, men juster likevel
+  str = String(str).replace(/,/g, ".");
+  // brøk?
+  if (str.includes("/")) {
+    const [numStr, denStr] = str.split("/");
+    const num = Number(numStr);
+    const den = Number(denStr);
+    if (!isFinite(num) || !isFinite(den) || den === 0) return NaN;
+    return num / den;
+  }
+  // vanlig tall
+  const v = Number(str);
+  return isFinite(v) ? v : NaN;
+}
+
 /* ========= PARSE LINEÆRE FAKTORER ========= */
 // Tolk "2x+1"
 function parseLinearFactor(str) {
-  const m = str.match(/^([+-]?\d*)x([+-]\d+)?$/);
+  // Tallmønster: heltall eller desimal (med valgfri ledende null), eller brøk av slike
+  // Eksempel på tall: "3", "-2.5", ".5", "0.5", "1/2", "-3/4", "2.5/1.25"
+  const num = '(?:\\d*\\.\\d+|\\d+\\.\\d*|\\d+)'; // tillat 0.5, .5, 5., 5
+  const frac = `(?:${num}\\/${num}|${num})`;      // enten a/b eller bare a
+  const signedFrac = `[+-]?(?:${frac})`;         // med valgfri fortegn
+
+  // a kan være tom (+/- implisitt), ±, et tall (inkl brøk). b er valgfri.
+  // Eksempler som matches:
+  // "x+2", "-x-3.5", "2.75x-1", "+0.5x+0.25", "3x", "-4.2x", "x-0.1", "1/2x-3/4"
+  const re = new RegExp(`^(${signedFrac})?x(${signedFrac})?$`, 'i');
+  const m = str.match(re);
   if (!m) return null;
 
-  let a = m[1];
-  let b = m[2];
+  let aRaw = m[1]; // kan være undefined, "", "+", "-", "1/2", "-.5", "2.5/1.25", ...
+  let bRaw = m[2]; // kan være undefined eller som aRaw men uten 'x'
 
-  if (a === "" || a === "+") a = 1;
-  if (a === "-") a = -1;
+  // Tolk a
+  // Manglende eller eksplisitt '+' betyr a = 1; bare '-' betyr a = -1
+  let a;
+  if (aRaw == null || aRaw === "" || aRaw === "+") {
+    a = 1;
+  } else if (aRaw === "-") {
+    a = -1;
+  } else {
+    a = parseNumber(aRaw);
+  }
 
-  a = Number(a);
-  b = b ? Number(b) : 0;
+  // Tolk b
+  let b = 0;
+  if (bRaw != null && bRaw !== "") {
+    b = parseNumber(bRaw);
+  }
 
-  return -b / a;
+  if (!isFinite(a) || a === 0) return null; // må være lineær faktor med a ≠ 0
+  if (!isFinite(b)) return null;
+
+  return -b / a; // roten til ax + b = 0
 }
 
 // Tolk "(2x+1)(x-3)^2(x+4)"
 function parsePolynomial(expr) {
-  expr = expr.replace(/\s+/g, "");
+ // fjern mellomrom og konverter norsk komma til punktum
+expr = expr.replace(/\s+/g, "").replace(/,/g, ".");
 
   const matches = [...expr.matchAll(/\((.*?)\)(\^\d+)?/g)];
   const result = [];
