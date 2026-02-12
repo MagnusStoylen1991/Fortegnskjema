@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="no">
 <head>
@@ -23,16 +22,6 @@ body {
   height: 60px;
   border-top: 2px solid black;
   margin-bottom: 50px;
-}
-
-/* vertikal rotstrek */
-.root-line {
-  position: absolute;
-  top: -10px;
-  width: 2px;
-  height: 70px;
-  background: black;
-  transform: translateX(-50%);
 }
 
 /* rotetikett */
@@ -76,6 +65,10 @@ body {
   transform: translateX(-50%);
   font-size: 18px;
   font-family: serif;
+
+  background: white;      /* hvitt felt bak null-symbol */
+  padding: 0 1px;         /* litt luft på sidene */
+  z-index: 999;           /* alltid foran vertikale linjer */
 }
 
 /* Flytt diagrammet til høyre */
@@ -112,47 +105,32 @@ body {
 .vline-seg  { z-index: 2; }
 .zero-symbol { z-index: 3; }
 
-
-.zero-symbol {
-  position: absolute;
-  top: -10px;
-  transform: translateX(-50%);
-  font-size: 18px;
-  font-family: serif;
-
-  background: white;      /* ⭐ hvitt felt bak null-symbol */
-  padding: 0 1px;         /* ⭐ litt luft på sidene */
-  z-index: 999;           /* ⭐ alltid foran vertikale linjer */
-}
-
 .stopper {
   position: absolute;
   background: white;
-  width: 100%;    /* dekker hele skjemaets bredde */
-  height: 20px;   /* litt høyde for å kutte linja */
-  z-index: 900;   /* over linjene, men under null-symbolene */
+  width: 100%;
+  height: 20px;
+  z-index: 900;
 }
 
 #bottom-mask {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 60px;           /* hvor mye av de nederste linjene som skjules */
+  height: 60px;
   background: white;
-  z-index: 50;            /* foran vertikale linjer (z-index 2), men bak alt annet */
-  pointer-events: none;   /* ikke blokker klikk */
+  z-index: 50;
+  pointer-events: none;
 }
 #red-box {
-  position: absolute;   /* viktig! følger containeren */
+  position: absolute;
   left: 0;
   width: 100%;
   height: 100px;
   background: white;
-  z-index: 50;          /* foran linjer, bak symboler */
-  pointer-events: none; /* ikke klikkbar */
+  z-index: 50;
+  pointer-events: none;
 }
-
-
 </style>
 </head>
 
@@ -162,20 +140,16 @@ body {
 
 <label for="inputPoly">Skriv inn polynom som faktorisert uttrykk:</label><br>
 <input id="inputPoly" type="text" style="width:400px; font-size:16px;"
-       placeholder="f.eks. (2x+1)(x-2)(x+3)">
+       placeholder="f.eks. -2(x+1/2)(x-2)">
 <button id="genBtn" type="button">Lag fortegnsskjema</button>
 
 <div id="scheme-wrapper">
   <div id="scheme"></div>
 </div>
-<!---<div id="red-box"></div>--->
-
-<!-- JS legges til i DEL 3 og DEL 4 -->
 
 <script>
 /* ========= Tall → brøk (MathJax) ========= */
 function toFraction(x, tol = 1e-10) {
-  // gjenkjenn pi-multipler
   const k_pi = x / Math.PI;
   if (Math.abs(k_pi - Math.round(k_pi)) < tol) {
     const k = Math.round(k_pi);
@@ -183,8 +157,6 @@ function toFraction(x, tol = 1e-10) {
     if (k === -1) return "-\\pi";
     return `${k}\\pi`;
   }
-
-  // gjenkjenn e-multipler
   const k_e = x / Math.E;
   if (Math.abs(k_e - Math.round(k_e)) < tol) {
     const k = Math.round(k_e);
@@ -192,13 +164,10 @@ function toFraction(x, tol = 1e-10) {
     if (k === -1) return "-e";
     return `${k}e`;
   }
-
-  // fallback: vanlige brøker
   if (Math.abs(x - Math.round(x)) < tol) {
     return Math.round(x).toString();
   }
 
-  // rasjonale tall → brøk
   let sign = x < 0 ? "-" : "";
   x = Math.abs(x);
 
@@ -219,21 +188,14 @@ function toFraction(x, tol = 1e-10) {
   }
 }
 
-
-
 function parseNumber(str) {
   if (!str) return NaN;
-
-  // normaliser tekst (komma -> punktum)
   str = String(str).replace(/,/g, ".");
-
-  // erstatt symboler
   str = str
-    .replace(/π/g, Math.PI)
+    .replace(/π/gi, Math.PI)
     .replace(/pi/gi, Math.PI)
-    .replace(/\be\b/g, Math.E);   // e som eget symbol, ikke del av "5e3"
+    .replace(/\be\b/g, Math.E);
 
-  // håndter brøk: a/b
   if (str.includes("/")) {
     const [numStr, denStr] = str.split("/");
     const num = parseNumber(numStr);
@@ -247,9 +209,7 @@ function parseNumber(str) {
 }
 
 /* ========= PARSE LINEÆRE FAKTORER ========= */
-// Tolk "2x+1"
 function parseLinearFactor(str) {
-  // tall/brøk/symbol-mønster
   const num = '(?:\\d*\\.\\d+|\\d+\\.\\d*|\\d+)';
   const sym = '(?:π|pi|e)';
   const atom = `(?:${sym}|${num})`;
@@ -263,7 +223,6 @@ function parseLinearFactor(str) {
   let aRaw = m[1];
   let bRaw = m[2];
 
-  // manglende koeffisient
   let a;
   if (aRaw == null || aRaw === "" || aRaw === "+") a = 1;
   else if (aRaw === "-") a = -1;
@@ -278,20 +237,35 @@ function parseLinearFactor(str) {
   return -b / a;
 }
 
-// Tolk "(2x+1)(x-3)^2(x+4)"
+/* ========= PARSE POLYNOM MED LEDENDE KONSTANT ========= */
+// Tolk "-2(x+1/2)(x-2)" osv.
 function parsePolynomial(expr) {
- // fjern mellomrom og konverter norsk komma til punktum
-expr = expr.replace(/\s+/g, "").replace(/,/g, ".");
-
-  const matches = [...expr.matchAll(/\((.*?)\)(\^\d+)?/g)];
+  expr = expr.replace(/\s+/g, "").replace(/,/g, ".");
   const result = [];
 
+  // 1) Ledende konstant (heltall eller brøk), f.eks. -2 eller 3/4
+  const c = expr.match(/^([+-]?(?:\d+(?:\.\d+)?|\d*\/\d+))(?!x)/);
+  if (c) {
+    const val = parseNumber(c[1]);
+    if (isFinite(val) && val !== 0) {
+      result.push({
+        root: null,          // ikke en rot
+        mult: 1,
+        label: c[1],         // vis tallet i margen
+        constant: val        // brukes for fortegn og produktlinje
+      });
+    }
+    expr = expr.slice(c[1].length);
+  }
+
+  // 2) Parentes-faktorer (lineære)
+  const matches = [...expr.matchAll(/\((.*?)\)(\^\d+)?/g)];
   matches.forEach(m => {
     const inside = m[1];
     const pow = m[2] ? Number(m[2].slice(1)) : 1;
     const root = parseLinearFactor(inside);
     if (root !== null) {
-      result.push({ root, mult: pow, label: inside });
+      result.push({ root, mult: pow, label: inside, constant: null });
     }
   });
 
@@ -335,7 +309,11 @@ function buildScheme(factors) {
   const container = document.getElementById("scheme");
   container.innerHTML = "";
 
-  const allRoots = [...new Set(factors.flatMap(f => f.roots))].sort((a,b)=>a-b);
+  // Viktig: filtrer bort null/undefined (f.eks. fra konstantfaktoren)
+  const allRoots =
+    [...new Set(factors.flatMap(f => f.roots))]
+      .filter(r => r !== null && r !== undefined)
+      .sort((a,b)=>a-b);
 
   const axis = document.createElement("div");
   axis.className = "axis";
@@ -344,29 +322,29 @@ function buildScheme(factors) {
   const W = 600;
   const x0 = 80;
 
-  const minX = allRoots[0] - 2;
-  const maxX = allRoots[allRoots.length-1] + 2;
+  const minX = (allRoots.length ? allRoots[0] : -1) - 2;
+  const maxX = (allRoots.length ? allRoots[allRoots.length-1] : 1) + 2;
 
   const pos = x => x0 + (x-minX)/(maxX-minX)*(W-x0);
 
-  // tegn røtter (KUN etiketter, ikke korte vertikaler)
+  // tegn røtter (KUN etiketter + usynlig mark)
   allRoots.forEach(r => {
-const lbl = document.createElement("div");
-lbl.className = "root-label";
-lbl.dataset.root = r;       // ⭐ NY LINJE – identifiserer roten
-lbl.innerHTML = `\\(${toFraction(r)}\\)`;
-lbl.style.left = pos(r) + "px";
-axis.appendChild(lbl);
+    const lbl = document.createElement("div");
+    lbl.className = "root-label";
+    lbl.dataset.root = r;
+    lbl.innerHTML = `\\(${toFraction(r)}\\)`;
+    lbl.style.left = pos(r) + "px";
+    axis.appendChild(lbl);
 
-const mark = document.createElement("div");
-mark.className = "root-mark";
-mark.dataset.root = r;
-mark.style.position = "absolute";
-mark.style.left = pos(r) + "px";   // eksakt rotposisjon, uten transform!
-mark.style.top = "0px";
-mark.style.width = "1px";
-mark.style.height = "1px";
-axis.appendChild(mark);
+    const mark = document.createElement("div");
+    mark.className = "root-mark";
+    mark.dataset.root = r;
+    mark.style.position = "absolute";
+    mark.style.left = pos(r) + "px";
+    mark.style.top = "0px";
+    mark.style.width = "1px";
+    mark.style.height = "1px";
+    axis.appendChild(mark);
   });
 
   const intervals = buildIntervals(allRoots);
@@ -384,97 +362,95 @@ axis.appendChild(mark);
 
     line._name = name;
     line._roots = f.roots;
-    lines.push(line);
+    line._constant = f.constant ?? null;
+    line._isProduct = !!f.isProduct;
 
+    lines.push(line);
     container.appendChild(line);
   });
 
   /* --- HJELPER: tegn vertikale linjer med hull rundt 0-symbolene --- */
-function drawVerticalLines(allRoots, container, pos) {
+  function drawVerticalLines(allRoots, container, pos) {
+    container.querySelectorAll(".vline-seg").forEach(e => e.remove());
 
-  // Fjern gamle linjer
-  container.querySelectorAll(".vline-seg").forEach(e => e.remove());
+    const contRect = container.getBoundingClientRect();
+    const axis = container.querySelector(".axis");
+    const startY = axis.offsetTop - 5;
 
-  // Containerens plassering i viewport
-  const contRect = container.getBoundingClientRect();
+    const totalHeight = container.offsetHeight;
 
-  // Hvor x-aksen ligger høydemessig
-  const axis = container.querySelector(".axis");
-  const axisRect = axis.getBoundingClientRect();
- const startY = axis.offsetTop - 5;   // hopp opp 5px over horisontal linje
+    const zeros = [...container.querySelectorAll(".zero-symbol")].map(z => {
+      const zr = z.getBoundingClientRect();
+      return {
+        top: zr.top - contRect.top - 4,
+        bottom: zr.bottom - contRect.top + 4
+      };
+    });
 
-  // Hele skjemaets høyde
-  const totalHeight = container.offsetHeight;
+    allRoots.forEach(r => {
+      const mark = container.querySelector(`.root-mark[data-root="${r}"]`);
+      const mr = mark.getBoundingClientRect();
+      const x = mr.left - contRect.left;
 
-  // Nullsymboler – VI BRUKER KUN DERES Y-VERDIER
-  const zeros = [...container.querySelectorAll(".zero-symbol")].map(z => {
-    const zr = z.getBoundingClientRect();
-    return {
-      top: zr.top - contRect.top - 4,      // litt ekstra luft
-      bottom: zr.bottom - contRect.top + 4
-    };
-  });
+      let segments = [{ top: startY, bottom: totalHeight }];
 
-  // For hver rot:
-  allRoots.forEach(r => {
+      zeros.forEach(z => {
+        const gapTop = z.top;
+        const gapBottom = z.bottom;
+        const newSegs = [];
 
-    // Finn rotens eksakte X (via root-mark)
-    const mark = container.querySelector(`.root-mark[data-root="${r}"]`);
-    const mr = mark.getBoundingClientRect();
-    const x = mr.left - contRect.left;
+        segments.forEach(seg => {
+          if (seg.top < gapTop)
+            newSegs.push({ top: seg.top, bottom: gapTop });
 
-    // Start med ett stort segment
-    let segments = [{ top: startY, bottom: totalHeight }];
+          if (seg.bottom > gapBottom)
+            newSegs.push({ top: gapBottom, bottom: seg.bottom });
+        });
 
-    // Klipp hull basert på 0-symbolets Y-intervall
-    zeros.forEach(z => {
-
-      const gapTop = z.top;
-      const gapBottom = z.bottom;
-
-      const newSegs = [];
-
-      segments.forEach(seg => {
-        if (seg.top < gapTop)
-          newSegs.push({ top: seg.top, bottom: gapTop });
-
-        if (seg.bottom > gapBottom)
-          newSegs.push({ top: gapBottom, bottom: seg.bottom });
+        segments = newSegs;
       });
 
-      segments = newSegs;
+      segments.forEach(seg => {
+        if (seg.bottom <= seg.top) return;
+        const div = document.createElement("div");
+        div.className = "vline-seg";
+        div.style.left = x + "px";
+        div.style.top = seg.top + "px";
+        div.style.height = (seg.bottom - seg.top) + "px";
+        container.appendChild(div);
+      });
     });
-
-    // Tegn segmenter
-    segments.forEach(seg => {
-      if (seg.bottom <= seg.top) return;
-
-      const div = document.createElement("div");
-      div.className = "vline-seg";
-      div.style.left = x + "px";
-      div.style.top = seg.top + "px";
-      div.style.height = (seg.bottom - seg.top) + "px";
-      container.appendChild(div);
-    });
-  });
-}
-
-
+  }
 
   // --- Vent til MathJax og layout er klar ---
   MathJax.typesetPromise().then(() => {
 
-    // 1) auto padding
+    // 1) auto padding for margen
     lines.forEach(line => {
       const w = line._name.offsetWidth;
       line.style.paddingLeft = (w + 30) + "px";
     });
 
-    // 2) segmenter for hver linje (+ nullsymboler)
+    // 2) segmenter for hver linje (+ nullsymboler der det finnes røtter)
     lines.forEach((line, idx) => {
       const f = factors[idx];
 
-      // nullsymboler
+      // === KONSTANT-FAKTOR LINJE ===
+      if (line._constant !== null && line._constant !== undefined && !line._isProduct) {
+        const ints = buildIntervals(allRoots);
+        ints.forEach(I => {
+          const seg = document.createElement("div");
+          seg.className = "factor-seg " + (line._constant > 0 ? "posSeg" : "negSeg");
+          const leftPos = pos(I.left);
+          const rightPos = pos(I.right);
+          seg.style.left = leftPos + "px";
+          seg.style.width = (rightPos - leftPos) + "px";
+          line.appendChild(seg);
+        });
+        return; // hopp over videre (ingen 0-symboler for konstanten)
+      }
+
+      // === VANLIG FAKTOR: tegn 0-symboler ved røttene ===
       f.roots.forEach(r => {
         const z = document.createElement("div");
         z.className = "zero-symbol";
@@ -486,14 +462,17 @@ function drawVerticalLines(allRoots, container, pos) {
       const ints = buildIntervals(allRoots);
 
       ints.forEach(I => {
-        let s = 1;
+        // Startverdi for produktlinje skal ta med konstantens fortegn.
+        // Alle andre linjer starter på 1.
+        let s = (line._isProduct ? (line._constant ?? 1) : 1);
+
         for (let i=0; i<f.roots.length; i++)
           s *= signFactor(I.sample, f.roots[i], f.mult[i]);
 
         const seg = document.createElement("div");
         seg.className = "factor-seg " + (s > 0 ? "posSeg" : "negSeg");
 
-        const pad = 6;  // luft rundt 0
+        const pad = 6;  // luft rundt 0 ved EGEN faktor sine røtter
 
         let leftPos  = pos(I.left);
         let rightPos = pos(I.right);
@@ -502,7 +481,6 @@ function drawVerticalLines(allRoots, container, pos) {
           return f.roots.some(r => Math.abs(r - x) < 1e-9);
         }
 
-        // Kun forkort ved ekte røtter for denne faktoren
         if (isFactorRoot(I.left))  leftPos  += pad;
         if (isFactorRoot(I.right)) rightPos -= pad;
 
@@ -513,90 +491,93 @@ function drawVerticalLines(allRoots, container, pos) {
       });
     });
 
+    // --- hvit stopper under produktlinja ---
+    const productLine = container.querySelector(".factor-line:last-child");
 
-// --- hvit stopper under produktlinja ---
-const productLine = container.querySelector(".factor-line:last-child");
+    // --- automatisk rød boks under produktlinja ---
+    let red = container.querySelector("#red-box");
+    if (!red) {
+      red = document.createElement("div");
+      red.id = "red-box";
+      container.appendChild(red);
+    }
+    const offset = -25;
+    red.style.top = (productLine.offsetTop + productLine.offsetHeight + offset) + "px";
 
-// --- automatisk rød boks under produktlinja ---
-let red = container.querySelector("#red-box");
-if (!red) {
-  red = document.createElement("div");
-  red.id = "red-box";
-  container.appendChild(red);
-}
+    const stopper = document.createElement("div");
+    stopper.className = "stopper";
+    const y = productLine.offsetTop + productLine.offsetHeight + 5;
+    stopper.style.top = y + "px";
+    container.appendChild(stopper);
 
-const offset = -25;   // negativ verdi = opp, positiv = ned
-red.style.top = (productLine.offsetTop + productLine.offsetHeight + offset) + "px";
+    let mask = container.querySelector("#bottom-mask");
+    if (!mask) {
+      mask = document.createElement("div");
+      mask.id = "bottom-mask";
+      container.appendChild(mask);
+    }
+    mask.style.top = (productLine.offsetTop + productLine.offsetHeight + 5) + "px";
 
-const stopper = document.createElement("div");
-stopper.className = "stopper";
-// legg stopperen 5px under produktlinja
-const y = productLine.offsetTop + productLine.offsetHeight + 5;
-stopper.style.top = y + "px";
-container.appendChild(stopper);
+    // 3) TEGN VERTIKALE LINJER TIL SLUTT (én gang)
+    drawVerticalLines(allRoots, container, pos);
+  }); // slutt MathJax
+} // slutt buildScheme
 
-// --- helt ny, enkel, fungerende maskeringsblokk ---
-let mask = container.querySelector("#bottom-mask");
-if (!mask) {
-  mask = document.createElement("div");
-  mask.id = "bottom-mask";
-  container.appendChild(mask);
-}
-
-mask.style.top = (productLine.offsetTop + productLine.offsetHeight + 5) + "px";
-
-// 3) TEGN VERTIKALE LINJER TIL SLUTT (én gang)
-drawVerticalLines(allRoots, container, pos);
-``
-    
-
-    
-
-  }); // <-- SLUTT på MathJax-blokken
-} // <-- SLUTT på buildScheme(factors)
-</script>
-
-<script>
 // =============================
 // GENERER FRA INPUT
 // =============================
-
 function generateFromInput() {
   const txt = document.getElementById("inputPoly").value;
   if (!txt) return;
 
   const parsed = parsePolynomial(txt);
   if (parsed.length === 0) {
-    alert("Kunne ikke tolke polynomet. Pass på at du skriver det faktorisert, f.eks (x-2)(2x+1).");
+    alert("Kunne ikke tolke polynomet. Pass på at du skriver det faktorisert, f.eks (x-2)(2x+1) eller med ledende konstant som -2(x+1/2)(x-2).");
     return;
   }
 
-  const factors = parsed.map(f => ({
-    label: f.label,
-    roots: [f.root],
-    mult: [f.mult]
-  }));
+  // Egne linjer for alle faktorer, inkl. konstantfaktoren om den finnes
+  const factors = parsed.map(f => {
+    if (f.root === null) {
+      return {
+        label: f.label,
+        roots: [],         // ingen røtter for konstant
+        mult: [],
+        constant: f.constant,
+        isProduct: false
+      };
+    }
+    return {
+      label: f.label,
+      roots: [f.root],
+      mult: [f.mult],
+      constant: null,
+      isProduct: false
+    };
+  });
 
-  // samlet produkt nederst
+  // Produktlinjen nederst:
+  const constantFactor = parsed.find(f => f.root === null);
   factors.push({
     label: txt,
-    roots: parsed.map(f => f.root),
-    mult: parsed.map(f => f.mult)
+    roots: parsed
+      .filter(f => f.root !== null && f.root !== undefined)
+      .map(f => f.root),
+    mult: parsed
+      .filter(f => f.root !== null && f.root !== undefined)
+      .map(f => f.mult),
+    constant: constantFactor ? Math.sign(constantFactor.constant) : 1, // bare fortegn!
+    isProduct: true
   });
 
   buildScheme(factors);
 }
 
 // =============================
-// EVENT-LISTENER
+// EVENT-LISTENER + startverdi
 // =============================
-
 document.getElementById("genBtn").addEventListener("click", generateFromInput);
-
-// standard startverdi
-document.getElementById("inputPoly").value =
-  "(2x+1)(x-2)(x+3)";
-
+document.getElementById("inputPoly").value = "-2(x+1/2)(x-2)";
 generateFromInput();
 </script>
 
