@@ -210,31 +210,46 @@ function parseNumber(str) {
 
 /* ========= PARSE LINEÆRE FAKTORER ========= */
 function parseLinearFactor(str) {
-  const num = '(?:\\d*\\.\\d+|\\d+\\.\\d*|\\d+)';
-  const sym = '(?:π|pi|e)';
-  const atom = `(?:${sym}|${num})`;
-  const frac = `(?:${atom}\\/${atom}|${atom})`;
-  const signed = `[+-]?(?:${frac})`;
+  str = str.replace(/\s+/g, "");
 
-  const re = new RegExp(`^(${signed})?x(${signed})?$`, 'i');
-  const m = str.match(re);
-  if (!m) return null;
+  // Flytt "-" foran parenteser: (2-x) -> -(x-2)
+  if (/^\(?.*-x.*\)?$/.test(str) && !str.includes("*") && !str.includes("/")) {
+    // omskriv 2-x til -(x-2)
+    const m = str.match(/(.+)-x/);
+    if (m) {
+      const a = parseNumber(m[1]);
+      return a; // roten er den positive verdien
+    }
+  }
 
-  let aRaw = m[1];
-  let bRaw = m[2];
+  // Generell form: a*x + b eller b + a*x
+  const re = /^([+-]?(?:\d+(?:\.\d+)?|\d*\/\d+))?\*?x([+-].+)?$|^([+-]?(?:\d+(?:\.\d+)?|\d*\/\d+))([+-](?:\d+(?:\.\d+)?|\d*\/\d+))?\*?x$/i;
 
-  let a;
-  if (aRaw == null || aRaw === "" || aRaw === "+") a = 1;
-  else if (aRaw === "-") a = -1;
-  else a = parseNumber(aRaw);
+  let a = 0, b = 0;
 
-  let b = 0;
-  if (bRaw != null && bRaw !== "") b = parseNumber(bRaw);
+  // forsøk 1: a x + b
+  let m = str.match(/^([+-]?(?:\d+(?:\.\d+)?|\d*\/\d+))?\*?x([+-].+)?$/i);
+  if (m) {
+    a = (m[1] ? parseNumber(m[1]) : 1);
+    b = (m[2] ? parseNumber(m[2]) : 0);
+    return -b / a;
+  }
 
-  if (!isFinite(a) || a === 0) return null;
-  if (!isFinite(b)) return null;
+  // forsøk 2: b + a x
+  m = str.match(/^([+-]?(?:\d+(?:\.\d+)?|\d*\/\d+))([+-](?:\d+(?:\.\d+)?|\d*\/\d+))?\*?x$/i);
+  if (m) {
+    b = parseNumber(m[1]);
+    a = (m[2] ? parseNumber(m[2]) : 1);
+    return -b / a;
+  }
 
-  return -b / a;
+  // spesial: (2-x)-typen
+  if (/^[+-]?(?:\d+(?:\.\d+)?|\d*\/\d+)-x$/.test(str)) {
+    const c = parseNumber(str.split("-x")[0]);
+    return c;  // roten er c
+  }
+
+  return null;
 }
 
 /* ========= PARSE POLYNOM MED LEDENDE KONSTANT ========= */
