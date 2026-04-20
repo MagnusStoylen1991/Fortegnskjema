@@ -706,18 +706,22 @@ function generateFromInput() {
   });
 
   // Produktlinje
-  factors.push({
-    label: formatProductLabel(txt),
-    roots: [
-      ...parsedNumer.filter(f => f.root !== null).map(f => f.root),
-      ...parsedDenom.filter(f => f.root !== null).map(f => f.root)
-    ],
-    mult: [],
-    constant: 1,
-    isProduct: true,
-    denomRoots: parsedDenom.map(f => f.root)
-  });
+const constantFactor = parsedNumer.find(f => f.root === null);
+const productConst = constantFactor
+  ? Math.sign(constantFactor.constant)
+  : 1;
 
+factors.push({
+  label: formatProductLabel(txt),
+  roots: [
+    ...parsedNumer.filter(f => f.root !== null).map(f => f.root),
+    ...parsedDenom.filter(f => f.root !== null).map(f => f.root)
+  ],
+  mult: [],
+  constant: productConst,
+  isProduct: true,
+  denomRoots: parsedDenom.map(f => f.root)
+});
   buildScheme(factors);
 }
 
