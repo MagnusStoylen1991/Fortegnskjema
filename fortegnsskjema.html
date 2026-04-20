@@ -642,6 +642,8 @@ if (line._isProduct && f.denomRoots) {
 // GENERER FRA INPUT
 // =============================
 function generateFromInput() {
+const numerConst = parsedNumer.find(f => f.root === null);
+const productConst = numerConst ? Math.sign(numerConst.constant) : 1;
   const txt = document.getElementById("inputPoly").value;
   if (!txt) return;
 
@@ -713,7 +715,7 @@ function generateFromInput() {
       ...parsedDenom.filter(f => f.root !== null).map(f => f.root)
     ],
     mult: [],
-    constant: 1,
+    constant: productConst,
     isProduct: true,
     denomRoots: parsedDenom.map(f => f.root)
   });
